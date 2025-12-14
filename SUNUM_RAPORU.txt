@@ -1,0 +1,73 @@
+========================================================================
+PROJE SUNUM VE TEKNİK RAPOR DOSYASI
+========================================================================
+
+TAKIM ADI: Gryffindor
+TAKIM ÜYELERİ:
+1. Tahaberk SOYSAL
+
+------------------------------------------------------------------------
+1. PROJE ÖZETİ (Asansör Konuşması)
+------------------------------------------------------------------------
+İstanbul emlak piyasasındaki fiyat tutarsızlığı sorununu çözmek için veri odaklı bir Yatırım Danışmanı sistemi geliştirdik. Sistemimiz, bir evin özelliklerini kullanarak adil piyasa değerini yüksek doğrulukla tahmin eder ve bu tahmini, ilan fiyatıyla kıyaslayarak kullanıcıya somut bir yatırım (Fırsat/Pahalı) tavsiyesi sunar. Bu sayede alıcıların duygusal değil, matematiksel kararlar vermesi sağlanır.
+
+------------------------------------------------------------------------
+2. KURULUM VE ÇALIŞTIRMA (How to Run)
+------------------------------------------------------------------------
+Projenin çalışması için Python 3.10 veya üzeri önerilir.
+
+1. Gerekli kütüphaneleri yükleyin:
+   pip install -r requirements.txt
+
+2. Arayüzü başlatın:
+   streamlit run app.py
+
+(Otomatik olarak tarayıcınızda açılacaktır.)
+
+------------------------------------------------------------------------
+3. VERİ ÖN İŞLEME YAKLAŞIMI (Data Engineering)
+------------------------------------------------------------------------
+Veri setindeki gürültüyü azaltmak ve modelin başarısını artırmak için 3 aşamalı bir temizlik uyguladık:
+
+- Temizlenen Alanlar:
+  1. Hedef Kitle Filtresi: "Krediye Uygun Olmayan" (Available for Loan = No) veriler, hedef kitlemiz olan beyaz yakalı yatırımcıya uymadığı için elendi.
+  2. Regex Temizliği: Fiyat sütunundaki "TL", nokta ve virgül hataları düzeltildi.
+  3. Eksik Veri (Imputation): ~10.000 satırdaki eksik bina yaşları, veri setinin genel medyan değeri ile dolduruldu.
+
+- Eklenen Yeni Özellikler (Feature Engineering):
+  1. Target Encoding (Kritik Hamle): Modelin "Lüks Semt" algısını kazanması için, her mahallenin medyan fiyatı hesaplanıp "Neighborhood_Avg_Price" adıyla yeni bir sütun olarak veriye eklendi. Bu işlem başarı skorunu %5 artırdı.
+  2. Metrekare Karesi: Modelin m2 ile fiyat arasındaki lineer olmayan ilişkiyi yakalaması sağlandı.
+
+- Seçilen Kritik Özellikler (Feature Selection):
+  Gürültü yaratan "ID", "İlan Tarihi" gibi sütunlar atıldı. Model şu özelliklere odaklandı: İlçe, Mahalle, Net m2, Oda Sayısı, Bina Yaşı, Kat Durumu.
+
+------------------------------------------------------------------------
+4. MODEL MİMARİSİ
+------------------------------------------------------------------------
+- Kullanılan Algoritma: XGBoost Regressor (Gradient Boosting)
+
+- Neden bu algoritma?: 
+  Emlak verisi gibi tablosal (tabular) ve kategorik (İlçe, Mahalle) verilerin yoğun olduğu setlerde, Linear Regression yetersiz kalırken, Neural Network'ler aşırı karmaşık (overkill) olmaktadır. XGBoost, hem hızı hem de karar ağacı tabanlı yapısıyla karmaşık ilişkileri (örn: 5. kattaki evin bodrumdan pahalı olması) en iyi yakalayan algoritma olduğu için seçildi.
+
+- Elde Edilen Başarı Skoru (R-Square): 0.761 
+  (Modelimiz, piyasadaki fiyat değişimlerinin %76'sını matematiksel olarak açıklayabilmektedir.)
+
+------------------------------------------------------------------------
+5. YATIRIM KARAR MANTIĞI (Business Logic)
+------------------------------------------------------------------------
+Sistemimiz sadece tahmini fiyatı göstermez, ilandaki fiyatla kıyaslayarak bir "Fiyat Sapma Yüzdesi" hesaplar.
+
+Formül: Sapma % = ((İlan Fiyatı - AI Adil Değer) / AI Adil Değer) * 100
+
+- FIRSAT Eşiği: Eğer İlan Fiyatı, AI değerinden %12 veya daha DÜŞÜKSE -> "FIRSAT"
+- PAHALI Eşiği: Eğer İlan Fiyatı, AI değerinden %12 veya daha YÜKSEKSE -> "PAHALI"
+- NORMAL: Aradaki değerler -> "Piyasa Fiyatı"
+
+------------------------------------------------------------------------
+6. SİZİ DİĞERLERİNDEN AYIRAN ÖZELLİK (Unique Value)
+------------------------------------------------------------------------
+Rakiplerimiz sadece "Ev şu kadar eder" derken, biz bir "Yatırım Danışmanı" vizyonu sunduk:
+
+1. Finansal Metrikler: Sadece biz "Tahmini Kira Getirisi" ve "Amortisman Süresi (ROI)" hesaplıyoruz. (İstanbul ortalaması olan 240 ay çarpanı kullanılarak).
+2. Outlier Removal: Veri setindeki mantıksız fiyatları (en alt %1 ve en üst %1) istatistiksel olarak temizlediğimiz için modelimiz spekülatif fiyatlardan etkilenmez.
+3. Görselleştirme: Kullanıcıya sadece rakam değil, mahalle ortalamasıyla kıyaslamalı grafikler sunuyoruz.
