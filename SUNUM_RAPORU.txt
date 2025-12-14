@@ -27,47 +27,55 @@ Projenin çalışması için Python 3.10 veya üzeri önerilir.
 ------------------------------------------------------------------------
 3. VERİ ÖN İŞLEME YAKLAŞIMI (Data Engineering)
 ------------------------------------------------------------------------
-Veri setindeki gürültüyü azaltmak ve modelin başarısını artırmak için 3 aşamalı bir temizlik uyguladık:
 
-- Temizlenen Alanlar:
-  1. Hedef Kitle Filtresi: "Krediye Uygun Olmayan" (Available for Loan = No) veriler, hedef kitlemiz olan beyaz yakalı yatırımcıya uymadığı için elendi.
-  2. Regex Temizliği: Fiyat sütunundaki "TL", nokta ve virgül hataları düzeltildi.
-  3. Eksik Veri (Imputation): ~10.000 satırdaki eksik bina yaşları, veri setinin genel medyan değeri ile dolduruldu.
+Temizlenen Alanlar	'Price' Sütunu	"TL", nokta, virgül gibi karakterler temizlenerek tam sayı (integer) formatına dönüştürüldü.
 
-- Eklenen Yeni Özellikler (Feature Engineering):
-  1. Target Encoding (Kritik Hamle): Modelin "Lüks Semt" algısını kazanması için, her mahallenin medyan fiyatı hesaplanıp "Neighborhood_Avg_Price" adıyla yeni bir sütun olarak veriye eklendi. Bu işlem başarı skorunu %5 artırdı.
-  2. Metrekare Karesi: Modelin m2 ile fiyat arasındaki lineer olmayan ilişkiyi yakalaması sağlandı.
+Missing Values (Eksik Veri)	Nadir olan eksik veriler (özellikle sayısal olanlar) medyan ile dolduruldu veya mantıksal olarak elendi.
 
-- Seçilen Kritik Özellikler (Feature Selection):
-  Gürültü yaratan "ID", "İlan Tarihi" gibi sütunlar atıldı. Model şu özelliklere odaklandı: İlçe, Mahalle, Net m2, Oda Sayısı, Bina Yaşı, Kat Durumu.
+Eklenen Yeni Özellikler (Feature Engineering)	Yapılmadı	Ezber (Overfitting) riskini azaltmak ve modelin saflığını korumak için, elimizdeki güçlü ham veriyi kullanmayı tercih ettik.
+
+Seçilen Kritik Özellikler (Feature Selection)	Krediye Uygunluk	Hedef kitlemizin (kısıtlı bütçeli, kredi kullananlar) ihtiyacına uygun olması için krediye uygun olmayan evler (Available for Loan = False) veri setinden tamamen elendi.
+
+Kategorik Değişkenler	Ilce, Isitma Tipi ve Kullanim Durumu gibi nominal özellikler One-Hot Encoding yöntemiyle sayısal formata çevrildi.
 
 ------------------------------------------------------------------------
 4. MODEL MİMARİSİ
 ------------------------------------------------------------------------
-- Kullanılan Algoritma: XGBoost Regressor (Gradient Boosting)
 
-- Neden bu algoritma?: 
-  Emlak verisi gibi tablosal (tabular) ve kategorik (İlçe, Mahalle) verilerin yoğun olduğu setlerde, Linear Regression yetersiz kalırken, Neural Network'ler aşırı karmaşık (overkill) olmaktadır. XGBoost, hem hızı hem de karar ağacı tabanlı yapısıyla karmaşık ilişkileri (örn: 5. kattaki evin bodrumdan pahalı olması) en iyi yakalayan algoritma olduğu için seçildi.
+Kullanılan Algoritma	Random Forest Regressor
 
-- Elde Edilen Başarı Skoru (R-Square): 0.761 
-  (Modelimiz, piyasadaki fiyat değişimlerinin %76'sını matematiksel olarak açıklayabilmektedir.)
+Neden bu algoritma?	 Emlak verisinin doğrusal olmayan, karmaşık ilişkilerini (örneğin ilçelerin, yaşın ve m²'nin fiyata etkisinin bileşik etkisini) yakalamakta basit Regresyon modellerinden daha başarılıdır. Denenen XGBoost ve Voting Regressor algoritmalarının skoru, Random Forest'ın gerisinde kalmıştır.
+
+Hiperparametreler	Varsayılan (GridSearchCV ile optimizasyon yapılmış, ancak varsayılan ayarlara yakın bir sonuç en yüksek skoru vermiştir.)
+
+Elde Edilen R-Kare Skoru	%76.68
+
+Elde Edilen Ortalama Hata (MAE)	204.867 TL
 
 ------------------------------------------------------------------------
 5. YATIRIM KARAR MANTIĞI (Business Logic)
 ------------------------------------------------------------------------
-Sistemimiz sadece tahmini fiyatı göstermez, ilandaki fiyatla kıyaslayarak bir "Fiyat Sapma Yüzdesi" hesaplar.
 
-Formül: Sapma % = ((İlan Fiyatı - AI Adil Değer) / AI Adil Değer) * 100
+Karar mekanizması, modelin genel hata payına (MAE) dayanmaktadır. Bu sayede karar eşiği veri tarafından belirlenmiş, "hard-coding" (elle kural yazma) yapılmamıştır. MAE Değeri: 205.000 TL (Modelin ortalama tahmin sapması) 
 
-- FIRSAT Eşiği: Eğer İlan Fiyatı, AI değerinden %12 veya daha DÜŞÜKSE -> "FIRSAT"
-- PAHALI Eşiği: Eğer İlan Fiyatı, AI değerinden %12 veya daha YÜKSEKSE -> "PAHALI"
-- NORMAL: Aradaki değerler -> "Piyasa Fiyatı"
+Sonuç,Matematiksel Eşik
+🔥 BÜYÜK FIRSAT,İlan Fiyatı <(Tahmin Fiyatı−MAE)
+✅ FIRSAT,İlan Fiyatı <Tahmin Fiyatı (Ancak Büyük Fırsat eşiğinde değil)
+⚠️ PAHALI,İlan Fiyatı >(Tahmin Fiyatı+MAE)
+⚖️ NORMAL,Fiyat MAE aralığında yer alır.
 
 ------------------------------------------------------------------------
 6. SİZİ DİĞERLERİNDEN AYIRAN ÖZELLİK (Unique Value)
 ------------------------------------------------------------------------
-Rakiplerimiz sadece "Ev şu kadar eder" derken, biz bir "Yatırım Danışmanı" vizyonu sunduk:
 
-1. Finansal Metrikler: Sadece biz "Tahmini Kira Getirisi" ve "Amortisman Süresi (ROI)" hesaplıyoruz. (İstanbul ortalaması olan 240 ay çarpanı kullanılarak).
-2. Outlier Removal: Veri setindeki mantıksız fiyatları (en alt %1 ve en üst %1) istatistiksel olarak temizlediğimiz için modelimiz spekülatif fiyatlardan etkilenmez.
-3. Görselleştirme: Kullanıcıya sadece rakam değil, mahalle ortalamasıyla kıyaslamalı grafikler sunuyoruz.
+Projemiz, sadece "Fiyatı Tahmin Et" modelinin ötesine geçerek, sabit gelirli bir alıcının ihtiyacına yönelik finansal analiz araçları sunar.
+
+MAE Temelli Dinamik Eşik: Karar mekanizmamız, rastgele bir yüzde (örneğin %10) yerine, modelimizin kendi ortalama hata payını (MAE) kullanarak fiyat eşiğini dinamik olarak belirler. Bu, kararlarımızın bilimsel dayanağını güçlendirir.
+
+Kapsamlı Yatırımcı Paneli: Uygulamaya eklediğimiz ikinci sekme, sadece alıcıya değil, yatırımcıya da hitap eder:
+
+Tahmini Kira Getirisi: Kullanıcının girdiği amortisman süresine göre tahmini aylık kira bedelini hesaplar.
+
+Gelecek Değer Projeksiyonu: Kullanıcının belirlediği yıllık enflasyon/değer artışı oranıyla evin 10 yıllık değer artışını grafik üzerinde gösterir.
+
+Kullanıcı Deneyimi: Streamlit ile geliştirilen arayüz, teknik olmayan kullanıcıların bile kolayca anlayabileceği, Türkçe ve sezgisel bir deneyim sunar.
